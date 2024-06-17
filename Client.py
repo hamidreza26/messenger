@@ -8,9 +8,9 @@ from cryptography.hazmat.backends import default_backend
 
 HOST = 'localhost'
 PORT = 5004
-
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
+socket_lock = threading.Lock()
 
 def receive(client_socket):
     while True:
@@ -39,18 +39,27 @@ def receive(client_socket):
             else:
                 text_area.insert(tk.END, message.decode() + '\n')
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"An error occurred in receive thread: {e}")
             client_socket.close()
             break
 
 def write(event=None):
     message = entry_message.get()
     if message:
-        client_socket.send(message.encode())
-        entry_message.delete(0, tk.END)
+        try:
+            with socket_lock:
+                client_socket.send(message.encode())
+            entry_message.delete(0, tk.END)
+        except Exception as e:
+            print(f"An error occurred while sending message: {e}")
+            client_socket.close()
 
 def on_closing():
-    client_socket.close()
+    try:
+        with socket_lock:
+            client_socket.close()
+    except Exception as e:
+        print(f"An error occurred while closing the socket: {e}")
     root.destroy()
 
 def login_or_register():
@@ -59,29 +68,46 @@ def login_or_register():
         if action == 'login':
             username = simpledialog.askstring("Login", "Enter your username:")
             password = simpledialog.askstring("Login", "Enter your password:", show='*')
-            client_socket.send(f"LOGIN,{username},{password}".encode())
-            response = client_socket.recv(1024).decode()
-            if response == "Login successful.":
-                messagebox.showinfo("Info", "Login successful.")
+            try:
+                with socket_lock:
+                    client_socket.send(f"LOGIN,{username},{password}".encode())
+                response = client_socket.recv(1024).decode()
+                if response == "Login successful.":
+                    messagebox.showinfo("Info", "Login successful.")
+                    break
+                else:
+                    messagebox.showerror("Error", response)
+            except Exception as e:
+                print(f"An error occurred during login: {e}")
+                client_socket.close()
                 break
-            else:
-                messagebox.showerror("Error", response)
         elif action == 'register':
             username = simpledialog.askstring("Register", "Enter your username:")
             password = simpledialog.askstring("Register", "Enter your password:", show='*')
-            client_socket.send(f"REGISTER,{username},{password}".encode())
-            response = client_socket.recv(1024).decode()
-            if response == "Registration successful.":
-                messagebox.showinfo("Info", "Registration successful. Please login now.")
-            else:
-                messagebox.showerror("Error", response)
+            try:
+                with socket_lock:
+                    client_socket.send(f"REGISTER,{username},{password}".encode())
+                response = client_socket.recv(1024).decode()
+                if response == "Registration successful.":
+                    messagebox.showinfo("Info", "Registration successful. Please login now.")
+                else:
+                    messagebox.showerror("Error", response)
+            except Exception as e:
+                print(f"An error occurred during registration: {e}")
+                client_socket.close()
+                break
         else:
             messagebox.showerror("Error", "Invalid action. Please type 'login' or 'register'.")
 
 def request_chat():
     target = simpledialog.askstring("Request Chat", "Enter the recipient's username:")
-    client_socket.send(f"REQUEST_CHAT,{target}".encode())
-    print(f"Step 1: Sent chat request to {target}")
+    try:
+        with socket_lock:
+            client_socket.send(f"REQUEST_CHAT,{target}".encode())
+        print(f"Step 1: Sent chat request to {target}")
+    except Exception as e:
+        print(f"An error occurred while requesting chat: {e}")
+        client_socket.close()
 
 root = tk.Tk()
 root.title("Simple Messenger")

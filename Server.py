@@ -59,46 +59,6 @@ def save_user(username, password_hash, salt):
     with open(users_db, "a") as f:
         f.write(f"{username},{password_hash},{salt}\n")
 
-# def load_keys():
-#     keys = {}
-#     try:
-#         print("1")
-#         with open(Publickey_keys_db, "r") as f:
-#             while True:
-#                 line = f.readline()
-#                 if not line:
-#                     break
-#                 if line.strip():  # Skip empty lines
-#                     username, public_key_pm = line.strip().split(',', 1)
-#                     print("1")
-#                     print(username)
-#                     print(public_key_pm)
-#                     # Read the entire PEM block
-#                     pem_lines = [public_key_pm]
-#                     while True:
-#                         next_line = f.readline()
-#                         if not next_line or 'END PUBLIC KEY' in next_line:
-#                             pem_lines.append(next_line.strip())
-#                             break
-#                         pem_lines.append(next_line.strip())
-
-#                     public_key_pm = "\n".join(pem_lines)
-
-#                     # Load public key
-#                     public_key = serialization.load_pem_public_key(public_key_pm.encode(), backend=default_backend())
-
-#                     keys[username] = public_key
-
-#     except FileNotFoundError:
-#         pass
-
-#     return keys
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
-
-Publickey_keys_db = "keys.txt"
-
 def load_keys():
     keys = {}
     try:
@@ -109,11 +69,6 @@ def load_keys():
                 line = lines[i].strip()
                 if line:  # Proceed only if the line is not empty
                     username, public_key_pm = line.split(',', 1)
-                    print("Username:", username)
-                    print("Public Key PEM:")
-                    print(public_key_pm)
-
-                    # Read the entire PEM block
                     pem_lines = [public_key_pm]
                     i += 1
                     while i < len(lines):
@@ -124,27 +79,15 @@ def load_keys():
                         i += 1
 
                     public_key_pm = "\n".join(pem_lines)
-
-                    # Load public key
                     public_key = serialization.load_pem_public_key(public_key_pm.encode(), backend=default_backend())
                     keys[username] = public_key
                 i += 1
-
     except FileNotFoundError:
         print(f"File {Publickey_keys_db} not found.")
     except Exception as e:
         print(f"Error loading keys: {e}")
 
     return keys
-
-# Test the function
-loaded_keys = load_keys()
-print("Loaded Keys:")
-print(loaded_keys)
-
-
-
-
 
 def save_keys(username, public_key_pem):
     with open(Publickey_keys_db, "a") as f:
@@ -222,11 +165,9 @@ def handle_client(client_socket, address):
                 parts = message.split(',')
                 if len(parts) == 2:
                     _, target_user = parts
-                    print(f"Received chat request for {target_user} from {user}")
                     keys = load_keys()
                     if target_user in keys:
                         target_public_key = keys[target_user]
-                        # Encrypt the server's public key using the target user's public key
                         encrypted_key = target_public_key.encrypt(
                             server_public_key.public_bytes(
                                 encoding=serialization.Encoding.PEM,
@@ -238,19 +179,14 @@ def handle_client(client_socket, address):
                                 label=None
                             )
                         )
-                        print(f"Sending encrypted public key to {user}")
                         client_socket.send(f"public key is here,{encrypted_key.hex()}".encode())
                     else:
                         client_socket.send("User not found.".encode())
-                else:
-                    print("Invalid REQUEST_CHAT format.")
             elif message.startswith("SEND"):
                 parts = message.split(',', 2)
                 if len(parts) == 3:
                     _, recipient, enc_message = parts
                     send_message(f"FROM,{user},{enc_message}".encode(), recipient)
-                else:
-                    print("Invalid SEND format.")
             else:
                 send_message(message.encode(), user)
         except Exception as e:
@@ -280,7 +216,15 @@ def accept_clients():
             thread.start()
         except Exception as e:
             print(f"Error accepting clients: {e}")
+            break
 
 print("Server started!")
 accept_thread = threading.Thread(target=accept_clients)
 accept_thread.start()
+
+# Ensure the main thread waits for the accept_clients thread to finish
+try:
+    accept_thread.join()
+except KeyboardInterrupt:
+    print("Server shutting down...")
+    server_socket.close()

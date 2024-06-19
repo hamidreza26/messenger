@@ -28,7 +28,7 @@ class Client:
                 response = self.client_socket.recv(1024).decode()
                 print(response)
                 if response == "Login successful.":
-                    self.start_chat(username)
+                    self.get_reciever_key(username)
                     break
             else:
                 print("Invalid choice. Please try again.")
@@ -38,10 +38,17 @@ class Client:
         response = self.client_socket.recv(1024).decode()
         print(response)
         if response == "Login successful.":
-            self.start_chat(username)
+            self.get_reciever_key(username)
         else:
             print("Login failed.")
             self.client_socket.close()
+
+    def get_reciever_key(self, username):
+        recipient = input("Enter recipient's username]: ")
+        self.client_socket.send(f"GET_PUBLIC_KEY,{recipient}".encode())
+        publicKey = self.client_socket.recv(1024).decode()
+        print("publicKey:"+publicKey)
+        self.start_chat(username)
 
     def start_chat(self, username):
         threading.Thread(target=self.receive_messages).start()

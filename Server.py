@@ -56,11 +56,22 @@ class Server:
                         if hashed_password == stored_password:
                             client_socket.send("Login successful.".encode())
                             self.clients[username] = client_socket
-                            break
+                            
                         else:
                             client_socket.send("Error: Invalid username or password.".encode())
                     else:
                         client_socket.send("Error: Invalid username or password.".encode())
+
+                elif request.startswith("GET_PUBLIC_KEY"):
+                    _, reciever = request.split(",")
+                    if reciever in self.users:
+
+                        reciever_public_key = self.users[reciever]['public_key']
+                        client_socket.send(f"here is public Key : '{reciever_public_key}' .".encode())
+                        break
+
+                    else:
+                        client_socket.send("Error: Invalid reciver.".encode())                       
                 else:
                     client_socket.send("Error: Invalid command.".encode())
                     break

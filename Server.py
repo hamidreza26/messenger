@@ -63,11 +63,12 @@ class Server:
                         client_socket.send("Error: Invalid username or password.".encode())
 
                 elif request.startswith("GET_PUBLIC_KEY"):
+
                     _, reciever = request.split(",")
                     if reciever in self.users:
 
                         reciever_public_key = self.users[reciever]['public_key']
-                        client_socket.send(f"here is public Key : '{reciever_public_key}' .".encode())
+                        client_socket.send(reciever_public_key)
                         break
 
                     else:

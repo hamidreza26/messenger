@@ -2,9 +2,9 @@ import socket
 import threading
 import hashlib
 import os
+import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
 
 class Server:
     def __init__(self, host='127.0.0.1', port=5555):
@@ -24,8 +24,6 @@ class Server:
             client_socket, client_address = self.server_socket.accept()
             print(f"New connection from {client_address}")
             threading.Thread(target=self.handle_client, args=(client_socket,)).start()
-    
-
 
     def handle_client(self, client_socket):
         try:
@@ -42,8 +40,8 @@ class Server:
                         self.users[username] = {
                             'salt': salt,
                             'password': hashed_password,
-                            'private_key': private_key,
-                            'public_key': public_key
+                            'private_key': base64.b64encode(private_key).decode('utf-8'),
+                            'public_key': base64.b64encode(public_key).decode('utf-8')
                         }
                         self.save_users()
                         client_socket.send("Signup successful.".encode())
@@ -56,23 +54,26 @@ class Server:
                         if hashed_password == stored_password:
                             client_socket.send("Login successful.".encode())
                             self.clients[username] = client_socket
-                            
                         else:
                             client_socket.send("Error: Invalid username or password.".encode())
                     else:
                         client_socket.send("Error: Invalid username or password.".encode())
 
                 elif request.startswith("GET_PUBLIC_KEY"):
-
-                    _, reciever = request.split(",")
-                    if reciever in self.users:
-
-                        reciever_public_key = self.users[reciever]['public_key']
-                        client_socket.send(reciever_public_key)
-                        break
-
+                    _, receiver = request.split(",")
+                    if receiver in self.users:
+                        receiver_public_key = self.users[receiver]['public_key']
+                        client_socket.send(receiver_public_key.encode())
                     else:
-                        client_socket.send("Error: Invalid reciver.".encode())                       
+                        client_socket.send("Error: Invalid receiver.".encode())
+
+                elif request.startswith("GET_PRIVATE_KEY"):
+                    _, receiver = request.split(",")
+                    if receiver in self.users:
+                        receiver_private_key = self.users[receiver]['private_key']
+                        client_socket.send(receiver_private_key.encode())
+                    else:
+                        client_socket.send("Error: Invalid receiver.".encode())
                 else:
                     client_socket.send("Error: Invalid command.".encode())
                     break
@@ -82,7 +83,7 @@ class Server:
                 if message:
                     recipient, sender, message_content = message.split(':', 2)
                     if recipient in self.clients:
-                        self.clients[recipient].send(f"{sender}: {message_content}".encode())
+                        self.clients[recipient].send(message_content.encode())
                     else:
                         client_socket.send(f"Error: User '{recipient}' not found.".encode())
                 else:
@@ -102,8 +103,8 @@ class Server:
                     username, salt_hex, hashed_password_hex, public_key_hex, private_key_hex = line.strip().split(",")
                     salt = bytes.fromhex(salt_hex)
                     hashed_password = bytes.fromhex(hashed_password_hex)
-                    public_key = bytes.fromhex(public_key_hex)
-                    private_key = bytes.fromhex(private_key_hex)
+                    public_key = base64.b64decode(public_key_hex)
+                    private_key = base64.b64decode(private_key_hex)
                     self.users[username] = {'salt': salt, 'password': hashed_password, 'public_key': public_key, 'private_key': private_key}
 
     def save_users(self):
@@ -111,26 +112,25 @@ class Server:
             for username, data in self.users.items():
                 salt_hex = data['salt'].hex()
                 hashed_password_hex = data['password'].hex()
-                public_key_hex = data['public_key'].hex()
-                private_key_hex = data['private_key'].hex()
+                public_key_hex = base64.b64encode(data['public_key']).decode('utf-8')
+                private_key_hex = base64.b64encode(data['private_key']).decode('utf-8')
                 f.write(f"{username},{salt_hex},{hashed_password_hex},{public_key_hex},{private_key_hex}\n")
 
 def generate_key_pair():
     private_key = rsa.generate_private_key(
-    public_exponent=65537,
+        public_exponent=65537,
         key_size=2048
     )
     public_key = private_key.public_key()
 
-        # Serialize the keys to PEM format
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     )
     public_pem = public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
     return private_pem, public_pem

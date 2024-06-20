@@ -1,8 +1,6 @@
 import socket
 import threading
-
-import hashlib
-import os
+import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
@@ -36,7 +34,7 @@ class Client:
                 response = self.client_socket.recv(1024).decode()
                 print(response)
                 if response == "Login successful.":
-                    self.get_reciever_key(username)
+                    self.get_receiver_key(username)
                     break
             else:
                 print("Invalid choice. Please try again.")
@@ -46,43 +44,48 @@ class Client:
         response = self.client_socket.recv(1024).decode()
         print(response)
         if response == "Login successful.":
-            self.get_reciever_key(username)
+            self.get_receiver_key(username)
         else:
             print("Login failed.")
             self.client_socket.close()
 
-    def get_reciever_key(self, username):
-        recipient = input("Enter recipient's username]: ")
+    def get_receiver_key(self, username):
+        recipient = input("Enter recipient's username: ")
         self.client_socket.send(f"GET_PUBLIC_KEY,{recipient}".encode())
-        public_key_pem = self.client_socket.recv(4096)
-        #print("publicKey:"+publicKey)
-        self.start_chat(username,recipient,public_key_pem)
+        public_key_pem = base64.b64decode(self.client_socket.recv(4096))
+        self.client_socket.send(f"GET_PRIVATE_KEY,{username}".encode())
+        private_key_pem = base64.b64decode(self.client_socket.recv(4096))
 
-    def start_chat(self, username,recipient,reciever_public_key):
-        threading.Thread(target=self.receive_messages).start()
+        self.start_chat(username, recipient, public_key_pem, private_key_pem)
+
+    def start_chat(self, username, recipient, receiver_public_key, private_key_pem):      
+        threading.Thread(target=self.receive_messages, args=(private_key_pem,)).start()
         while True:
             message = input("Enter your message('q' to quit): ")
             if message.lower() == 'q':
                 break
-            self.send_message(recipient, username, message,reciever_public_key)
+            self.send_message(recipient, username, message, receiver_public_key)
 
-    def send_message(self, recipient, sender, message,reciever_public_key):
-        encrypted_message = self.encryptMessage(message,reciever_public_key)
-        full_message = f"{recipient}:{sender}:{message}"
+    def send_message(self, recipient, sender, message, receiver_public_key):
+        encrypted_message = self.encrypt_message(message, receiver_public_key)
+        full_message = f"{recipient}:{sender}:{base64.b64encode(encrypted_message).decode()}"
         self.client_socket.send(full_message.encode())
 
-    def receive_messages(self):
+    def receive_messages(self, private_key_pem):
+        private_key = serialization.load_pem_private_key(private_key_pem, password=None, backend=default_backend())
         while True:
-            try:
-                message = self.client_socket.recv(1024).decode()
-                if message:
-                    print(message)
-            except Exception as e:
-                print(f"Error receiving message: {e}")
-                break
+            encrypted_message = self.client_socket.recv(1024).decode()
+            if encrypted_message:
+                try:
+                    recipient, sender, encrypted_content = encrypted_message.split(':', 2)
+                    decrypted_message = self.decrypt_message(base64.b64decode(encrypted_content), private_key)
+                    print(f"Message from {sender}: {decrypted_message}")
+                except Exception as e:
+                    print(f"Error decrypting message: {e}")
+                    continue
 
-    def encryptMessage(self,message,key):
-        public_key = serialization.load_pem_public_key(key, backend=default_backend())
+    def encrypt_message(self, message, public_key_pem):
+        public_key = serialization.load_pem_public_key(public_key_pem, backend=default_backend())
         encrypted_message = public_key.encrypt(
             message.encode(),
             padding.OAEP(
@@ -92,6 +95,17 @@ class Client:
             )
         )
         return encrypted_message
-    
+
+    def decrypt_message(self, encrypted_message, private_key):
+        decrypted_message = private_key.decrypt(
+            encrypted_message,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        return decrypted_message.decode()
+
 if __name__ == "__main__":
     client = Client()

@@ -40,8 +40,8 @@ class Server:
                         self.users[username] = {
                             'salt': salt,
                             'password': hashed_password,
-                            'private_key': base64.b64encode(private_key).decode('utf-8'),
-                            'public_key': base64.b64encode(public_key).decode('utf-8')
+                            'private_key': private_key,
+                            'public_key': public_key
                         }
                         self.save_users()
                         client_socket.send("Signup successful.".encode())
@@ -63,7 +63,7 @@ class Server:
                     _, receiver = request.split(",")
                     if receiver in self.users:
                         receiver_public_key = self.users[receiver]['public_key']
-                        client_socket.send(receiver_public_key.encode())
+                        client_socket.send(base64.b64encode(receiver_public_key))
                     else:
                         client_socket.send("Error: Invalid receiver.".encode())
 
@@ -71,7 +71,7 @@ class Server:
                     _, receiver = request.split(",")
                     if receiver in self.users:
                         receiver_private_key = self.users[receiver]['private_key']
-                        client_socket.send(receiver_private_key.encode())
+                        client_socket.send(base64.b64encode(receiver_private_key))
                     else:
                         client_socket.send("Error: Invalid receiver.".encode())
                 else:
@@ -83,7 +83,7 @@ class Server:
                 if message:
                     recipient, sender, message_content = message.split(':', 2)
                     if recipient in self.clients:
-                        self.clients[recipient].send(message_content.encode())
+                        self.clients[recipient].send(f"{recipient}:{sender}:{message_content}".encode())
                     else:
                         client_socket.send(f"Error: User '{recipient}' not found.".encode())
                 else:
@@ -103,8 +103,8 @@ class Server:
                     username, salt_hex, hashed_password_hex, public_key_hex, private_key_hex = line.strip().split(",")
                     salt = bytes.fromhex(salt_hex)
                     hashed_password = bytes.fromhex(hashed_password_hex)
-                    public_key = base64.b64decode(public_key_hex)
-                    private_key = base64.b64decode(private_key_hex)
+                    public_key = bytes.fromhex(public_key_hex)
+                    private_key = bytes.fromhex(private_key_hex)
                     self.users[username] = {'salt': salt, 'password': hashed_password, 'public_key': public_key, 'private_key': private_key}
 
     def save_users(self):
@@ -112,8 +112,8 @@ class Server:
             for username, data in self.users.items():
                 salt_hex = data['salt'].hex()
                 hashed_password_hex = data['password'].hex()
-                public_key_hex = base64.b64encode(data['public_key']).decode('utf-8')
-                private_key_hex = base64.b64encode(data['private_key']).decode('utf-8')
+                public_key_hex = data['public_key'].hex()
+                private_key_hex = data['private_key'].hex()
                 f.write(f"{username},{salt_hex},{hashed_password_hex},{public_key_hex},{private_key_hex}\n")
 
 def generate_key_pair():

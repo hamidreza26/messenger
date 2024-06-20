@@ -58,7 +58,7 @@ class Client:
 
         self.start_chat(username, recipient, public_key_pem, private_key_pem)
 
-    def start_chat(self, username, recipient, receiver_public_key, private_key_pem):      
+    def start_chat(self, username, recipient, receiver_public_key, private_key_pem):
         threading.Thread(target=self.receive_messages, args=(private_key_pem,)).start()
         while True:
             message = input("Enter your message('q' to quit): ")

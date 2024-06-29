@@ -49,6 +49,7 @@ def receive(client_socket):
                 handle_p2p_info(message.decode())
             else:
                 text_area.insert(tk.END, message.decode() + '\n')
+
         except Exception as e:
             print(f"An error occurred: {e}")
             client_socket.close()
@@ -100,6 +101,7 @@ def login_or_register():
                 messagebox.showinfo("Info", "Registration successful. Please login now.")
             else:
                 messagebox.showerror("Error", response)
+
         else:
             messagebox.showerror("Error", "Invalid action. Please type 'login' or 'register'.")
 
@@ -117,6 +119,7 @@ def handle_p2p_info(message):
     if len(parts) == 3:
         p2p_ip = parts[1]
         p2p_port = int(parts[2])
+        print(f"recieved info {p2p_ip}:{p2p_port}")
         p2p_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         p2p_socket.connect((p2p_ip, p2p_port))
         threading.Thread(target=receive_p2p).start()

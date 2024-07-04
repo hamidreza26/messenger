@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 import base64
 HOST = 'localhost'
-PORT = 5009
+PORT = 5001
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((HOST, PORT))
@@ -190,6 +190,17 @@ def verify_sign(public_key_pem, encrypted_message, original_message):
 
 
 
+#load the port of clients the they listen on that
+def load_listen_port_client(targert_username):
+        with open('port.txt', "r") as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    username, port= line.strip().split(',')
+                    if username == targert_username:
+                        listen_port = port
+        return listen_port
+
+
 
 def save_private_key(username, private_key):
     with open(f"{private_keys_dir}{username}_private_key.pem", "wb") as f:
@@ -277,9 +288,9 @@ def handle_client(client_socket, address):
                         # # Encrypt the public key with server public key
                         sign = sign_server(server_private_key_pem,target_public_key)
                         print (f"\nis sign\n{sign}\n")
-                        print (f"\nis target public key \n{target_public_key}\n")                                       
-                        message = f"public key is here,{sign},{target_public_key}"
-
+                        print (f"\nis target public key \n{target_public_key}\n")
+                        port_target = load_listen_port_client(target_user)
+                        message = f"public key is here,{sign},{target_public_key},{port_target}"
                         print(f"Sending encrypted public key to {user}")
                         client_socket.send(message.encode())
 
@@ -287,11 +298,6 @@ def handle_client(client_socket, address):
                         client_socket.send("User not found.".encode())
                 else:
                     print("Invalid REQUEST_CHAT format.")
-
-            elif message.startswith("REQUEST_P2P_CHAT"):
-                _, target_user = message.split(',')
-                handle_p2p_request(client_socket, user, target_user)
-
             elif message.startswith("SEND"):
                 parts = message.split(',', 2)
                 if len(parts) == 3:
@@ -299,7 +305,6 @@ def handle_client(client_socket, address):
                     send_message(f"FROM,{user},{enc_message}".encode(), recipient)
                 else:
                     print("Invalid SEND format.")
-
             else:
                 send_message(message.encode(), user)
         except Exception as e:
@@ -310,20 +315,6 @@ def handle_client(client_socket, address):
             print(f"Connection closed with {address} - username: {user}")
             break
 
-def handle_p2p_request(client_socket, source_user, target_user):
-    if target_user in clients:
-        target_socket = clients[target_user]
-        target_ip, target_port = target_socket.getpeername()
-        
-        # Send the target user's IP and port to the source user
-        client_socket.send(f"P2P_INFO,{target_ip},{target_port}".encode())
-        
-        # Send the source user's IP and port to the target user
-        source_ip, source_port = client_socket.getpeername()
-        target_socket.send(f"P2P_INFO,{source_ip},{source_port}".encode())
-    else:
-        client_socket.send("User not found.".encode())
-
 def send_message(message, recipient):
     if recipient in clients:
         try:
@@ -333,7 +324,6 @@ def send_message(message, recipient):
             del clients[recipient]
     else:
         print(f"User {recipient} is not connected.")
-
 
 def accept_clients():
     while True:

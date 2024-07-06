@@ -10,11 +10,11 @@ import random
 import os
 
 HOST = 'localhost'
-PORT = 5002
+PORT = 5009
 
 private_keys_dir = "private_keys/"
 Publickey_keys_dir = "public_keys/"
-
+Group_id_dir = "Group_id_dir/"
 Private_Chat = 0
 user_ports = {}
 
@@ -45,6 +45,62 @@ def verify_sign(public_key_pem, encrypted_message, original_message):
         return True
     except:
         return False
+
+
+def sign_message(private_key_pem, message):
+    private_key = serialization.load_pem_private_key(
+        private_key_pem, 
+        password=None, 
+        backend=default_backend()
+    )
+    # Controleer of het bericht al in bytes-formaat is
+    if isinstance(message, str):
+        message = message.encode()
+    
+    encrypted = private_key.sign(
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    return base64.b64encode(encrypted).decode()
+
+
+def send_message_on_group(id):
+    global Group_id_dir , current_username
+    message = input(f"Enter the Message on Group with id {id}: ")
+    target_ip = 'localhost'
+    private_key = load_keys(current_username)
+    print(private_key)
+    sign = sign_message(private_key,message)
+    # if isinstance(sign, bytes):
+    #     sign = sign.decode('utf-8')
+    message_for_send = f"its_group,{current_username},{id},{sign},{message}"
+    try:
+        with open(f"{Group_id_dir}{id}_group_id.txt", "r") as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    parts = line.strip().split(':')
+                    if len(parts) == 2:
+                        username, port = parts
+                        port = int(port)  # Convert port to integer
+                        print(f"Sending message to {username} on port {port}")
+                        sender_socket3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sender_socket3.connect((target_ip, port))
+                        sender_socket3.send(message_for_send.encode())
+                        sender_socket3.close()
+                    else:
+                        print(f"Invalid line format: {line.strip()}")
+    except FileNotFoundError:
+        print(f"File {Group_id_dir}{id}_group_id.txt not found")
+    except ValueError as ve:
+        print(f"Value error: {ve}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+
 
 
 def send_message(target_ip, target_port, messagefirst, target_public_key ):
@@ -105,12 +161,70 @@ def receive(client_socket):
                     # Handle the decrypted key (use it to encrypt messages to the target user)
                 else:
                     print("Invalid public key format.")
+            
+            elif message.startswith(b"group_chat_acctepted"):
+                parts = message.split(b',', 3)
+                if len(parts) == 4:
+                    id = parts[1]
+                    sign = parts[2]
+                    with open("server_public_key.pem", "rb") as f:
+                        server_public_key = f.read()
+                    peer_ip = 'localhost'
+                    is_authentic1 = verify_sign(server_public_key, sign, id)
+                    if is_authentic1:
+                        if isinstance(id, bytes):
+                            id = id.decode('utf-8')
+                        with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
+                            f.write(f"{current_username}: {Group_port}")
+                        add_clientes(sign, id)
+                        
+                        message = input("enter the message: ")
+                        # sender_group_thread = threading.Thread(target=send_group_message, args=(id, message))
+                        # sender_group_thread.start()
+                        print ( "2 is done")
+
+
+
+
             else:
                 text_area.insert(tk.END, message.decode() + '\n')
         except Exception as e:
             print(f"An error occurred: {e}")
             client_socket.close()
             break
+
+
+def add_clientes(sign, id):
+    while True:
+        user = input("Enter the username (enter done for finish):   ")
+        if user == 'done':
+            break
+
+        target_ip = '127.0.0.1'
+        #send the sign and id with private chat
+        target_port= load_listen_port_client(user)
+        print(target_port)
+        message = f"add_my_group,{id},{sign}"
+        pub_key = load_public_keys(user)
+        sender_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        target_port = int(target_port)
+        print("w")
+        sender_socket.connect((target_ip, target_port))
+        print("w")
+        sender_socket.send(message.encode())
+        print("w")
+        sender_socket.close()
+
+def load_listen_port_client(targert_username):
+        with open('port.txt', "r") as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    username, port= line.strip().split(',')
+                    if username == targert_username:
+                        listen_port = port
+        return listen_port
+
 
 def write(event=None):
     message = entry_message.get()
@@ -226,40 +340,115 @@ if os.path.exists('port.txt'):
 
 
 def load_keys(username):
-    public_key = {}
+    private_key = {}
     with open(f"{private_keys_dir}{username}_private_key.pem", "r") as f:
+        private_key = f.read()
+    return private_key
+
+
+def load_public_keys(username):
+    public_key = {}
+    with open(f"{Publickey_keys_dir}{username}_public_key.pem", "r") as f:
         public_key = f.read()
     return public_key
 
 
+
+def listen_for_messages_Group(Group_port):
+    listener_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener_socket.bind(('localhost', Group_port))
+    listener_socket.listen(2)
+    print(f"Client is listening on port for Group chat {Group_port}...")
+
+    while True:
+        client_socket, addr = listener_socket.accept()
+        print(f"New connection from {addr}")
+        client_handler = threading.Thread(target=handle_incoming_messages, args=(client_socket,))
+        client_handler.start()
+
+
+#when request add is accepted from another user
+def add_is_accepted(id , username):
+    print("on the add accteped")
+    global Group_port
+    print (Group_port)
+    # if isinstance(id, bytes):
+    #     id = id.decode('utf-8')
+    with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
+            f.write(f"\n{username}: {Group_port}")
+    sender_thread2 = threading.Thread(target=send_message_on_group,args=(id,))
+    sender_thread2.start()
+
+
 # تابعی برای مدیریت پیام‌های ورودی
 def handle_incoming_messages(client_socket):
+    
     global Private_Chat, current_username
     message = client_socket.recv(1024).decode()
+    print(message)
     private_key = load_keys(current_username)
-    # DE_message = message
-    if message.startswith("FIRST_MESSAGE") and Private_Chat == 0:
+ 
+    if message.startswith("add_my_group"):
+            print("its add")
+            parts = message.split(',')
+            if len(parts) == 3:
+                id = parts[1]
+
+                #have bug in the sign
+                # sign = parts[2]
+                # with open("server_public_key.pem", "rb") as f:
+                #         server_public_key = f.read()
+                # idE = id.encode('utf-8')
+                # is_authentic1 = verify_sign(server_public_key, sign, idE)
+                # if (is_authentic1):
+                message = input(f"Do you want to add group with id({id})(y/n): ")
+                if message == 'y':
+                    add_is_accepted(id , current_username)
+                    print(current_username)
+                    print(message)
+                else:
+                    print("cant verify the message its not safe")
+    elif message.startswith("its_group"):
+        print("here")
+        parts = message.split(',')
+        #  message_for_send = f"its_group,{id},{sign},{message}"
+        if len(parts) == 5:
+            username = parts[1]
+            id = parts[2]
+            sign = parts[3]
+            message = parts[4]
+            pub_key = load_public_keys(username)
+            is_auth = verify_sign(pub_key,sign,message)
+            if (is_auth):
+                print(f"{username}: {message}")
+            else:
+                print("cant verify the message unfortunatly")
+                
+    elif  decryptMessage(message, private_key).startswith("FIRST_MESSAGE") and Private_Chat == 0:
         parts = message.split(',')
         if len(parts) == 3:
             sender_username = parts[1]
             firstmessage = parts[2]
-            DE_message = decryptMessage(firstmessage, private_key)
             print(DE_message)
             print(sender_username)
             print(f"Step 1: try for give the pub key from {sender_username}")
             request_chat2(sender_username)
-    while True:
-        try:
-            message = client_socket.recv(1024).decode()
-            private_key = load_keys(current_username)
-            DE_message = decryptMessage(message, private_key)
-            if not message:
+
+ 
+
+    else:
+        while True:
+            try:
+                message = client_socket.recv(1024).decode()
+                private_key = load_keys(current_username)
+                DE_message = decryptMessage(message, private_key)
+                if not message:
+                    break
+                print(f"\nMessage Received: {DE_message}")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                client_socket.close()
                 break
-            print(f"\nMessage Received: {DE_message}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            client_socket.close()
-            break
 
 
 def listen_for_messages(port):
@@ -282,6 +471,30 @@ with open('port.txt', 'w') as f:
         f.write(f"{username}, {port}\n")
 
 print(f"Successfully saved port for listening: {port_for_listen} and username: {current_username}.")
+
+
+
+
+
+
+
+
+
+
+Group_port = random.randint(1024, 65535)
+
+def request_group_chat():
+    global Group_port , current_username
+    id = simpledialog.askstring("Request_Group_Chat", "Enter the Group ID: ")
+    client_socket.send(f"REQUEST_Group_CHAT,{id},{Group_port},{current_username}".encode())
+    print(f"Step 1: Sent Group chat request with id {id} and port {Group_port}")
+
+
+
+# Start Thread for listening for Group messages
+listener_thread = threading.Thread(target=listen_for_messages_Group, args=(Group_port,))
+listener_thread.start()
+
 
 # Start Thread for listening for messages
 listener_thread = threading.Thread(target=listen_for_messages, args=(port_for_listen,))
@@ -310,6 +523,11 @@ close_button.grid(row=2, column=0, columnspan=2, pady=10)
 request_chat_button = tk.Button(root, text="Request Chat", command=request_chat)
 request_chat_button.grid(row=3, column=0, columnspan=2, pady=10)
 
+
+#Group Chat
+request_chat_button = tk.Button(root, text="Request Group Chat", command=request_group_chat)
+request_chat_button.grid(row=1, column=0, columnspan=2, pady=15)
+
 # Start the thread for receiving messages
 receive_thread = threading.Thread(target=receive, args=(client_socket,))
 receive_thread.start()
@@ -317,4 +535,3 @@ receive_thread.start()
 # Start the tkinter main loop
 root.protocol("WM_DELETE_WINDOW", on_closing)
 root.mainloop()
-

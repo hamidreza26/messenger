@@ -1,64 +1,46 @@
 import socket
 import threading
-import random
 
-# تابعی برای گوش دادن به پیام‌های ورودی
-def listen_for_messages(port):
-    listener_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener_socket.bind(('localhost', port))
-    listener_socket.listen(5)
-    print(f"کلاینت در پورت {port} منتظر اتصال است...")
+PORT = 12345  # پورت مشترک برای همه نودها
+peers = []  # لیست نودهای همتا
 
-    while True:
-        client_socket, addr = listener_socket.accept()
-        print(f"اتصال جدید از {addr}")
-        client_handler = threading.Thread(target=handle_incoming_messages, args=(client_socket,))
-        client_handler.start()
-
-# تابعی برای مدیریت پیام‌های ورودی
-def handle_incoming_messages(client_socket):
+def listen_for_messages(local_socket):
     while True:
         try:
-            message = client_socket.recv(1024).decode()
-            if not message:
-                break
-            print(f"\nپیام دریافتی: {message}")
-        except:
-            client_socket.close()
+            message, addr = local_socket.recvfrom(1024)
+            if addr not in peers:
+                peers.append(addr)  # اضافه کردن نود جدید به لیست نودها
+            print(f"\nMessage from {addr}: {message.decode('utf-8')}")
+        except Exception as e:
+            print(f"Error receiving message: {e}")
             break
 
-# تابعی برای ارسال پیام به یک کلاینت دیگر
-def send_message(target_ip, target_port):
-    try:
-        sender_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sender_socket.connect((target_ip, target_port))
-        while True:
-            message = input("پیام به کلاینت دیگر (یا 'exit' برای خروج): ")
-            if message.lower() == 'exit':
-                break
-            sender_socket.send(message.encode())
-        sender_socket.close()
-    except Exception as e:
-        print(f"خطا در ارسال پیام به {target_ip}:{target_port} - {e}")
+def send_message(message, local_socket):
+    for peer in peers:
+        try:
+            local_socket.sendto(message.encode('utf-8'), peer)
+        except Exception as e:
+            print(f"Failed to send message to {peer}: {e}")
 
-# تولید پورت رندوم در محدوده پورت‌های مجاز (1024-65535)
-port = random.randint(1024, 65535)
-print(f"پورت رندوم تولید شده برای کلاینت: {port}")
+def main():
+    local_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    local_socket.bind(('0.0.0.0', PORT))
 
-# راه‌اندازی ترد برای گوش دادن به پیام‌های ورودی
-listener_thread = threading.Thread(target=listen_for_messages, args=(port,))
-listener_thread.start()
+    # اجرای رشته‌ای برای دریافت پیام‌ها
+    receive_thread = threading.Thread(target=listen_for_messages, args=(local_socket,))
+    receive_thread.start()
 
-# دریافت اطلاعات کلاینت‌های دیگر برای ارسال پیام
-peers = []
-while True:
-    peer_ip = input("آدرس IP کلاینت دیگر (یا 'done' برای اتمام): ")
-    if peer_ip.lower() == 'done':
-        break
-    peer_port = int(input("پورت کلاینت دیگر: "))
-    peers.append((peer_ip, peer_port))
+    print("Enter peers in the format <IP>:<PORT> (e.g., 127.0.0.1:12345). Type 'done' when finished.")
+    while True:
+        peer = input("Enter peer: ")
+        if peer.lower() == 'done':
+            break
+        ip, port = peer.split(':')
+        peers.append((ip, int(port)))
 
-# راه‌اندازی ترد برای ارسال پیام به کلاینت‌های دیگر
-for peer_ip, peer_port in peers:
-    sender_thread = threading.Thread(target=send_message, args=(peer_ip, peer_port))
-    sender_thread.start()
+    while True:
+        message = input("Enter message: ")
+        send_message(message, local_socket)
+
+if __name__ == "__main__":
+    main()

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 import base64
 HOST = 'localhost'
-PORT = 5002
+PORT = 5009
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((HOST, PORT))
@@ -19,9 +19,12 @@ clients = {}
 users_db = "users.txt"
 Publickey_keys_dir = "public_keys/"
 private_keys_dir = "private_keys/"
-
+Group_id_dir = "Group_id_dir/"
 if not os.path.exists(Publickey_keys_dir):
     os.makedirs(Publickey_keys_dir)
+
+if not os.path.exists(Group_id_dir):
+    os.makedirs(Group_id_dir)
 
 
 if not os.path.exists(private_keys_dir):
@@ -208,25 +211,38 @@ def save_private_key(username, private_key):
         # print('private is fuckedup')
 
 def generate_keys():
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
-    )
-    public_key = private_key.public_key()
+    # private_key = rsa.generate_private_key(
+    #     public_exponent=65537,
+    #     key_size=2048,
+    #     backend=default_backend()
+    # )
+    # public_key = private_key.public_key()
 
-    private_key_pem = private_key.private_bytes(
+    # private_key_pem = private_key.private_bytes(
+    #     encoding=serialization.Encoding.PEM,
+    #     format=serialization.PrivateFormat.PKCS8,
+    #     encryption_algorithm=serialization.NoEncryption()
+    # )
+
+    # public_key_pem = public_key.public_bytes(
+    #     encoding=serialization.Encoding.PEM,
+    #     format=serialization.PublicFormat.SubjectPublicKeyInfo
+    # )
+    server_private_key = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+    )
+    server_private_key_pem = server_private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     )
-
-    public_key_pem = public_key.public_bytes(
+    server_public_key = server_private_key.public_key().public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
-
-    return private_key_pem, public_key_pem
+    return server_private_key_pem, server_public_key
 
 def handle_client(client_socket, address):
     user = None
@@ -298,6 +314,30 @@ def handle_client(client_socket, address):
                         client_socket.send("User not found.".encode())
                 else:
                     print("Invalid REQUEST_CHAT format.")
+
+            elif message.startswith("REQUEST_Group_CHAT"):
+                    print("request on the server ")
+                    print(message)
+                    parts = message.split(',', 3)
+                    if len(parts) == 4:
+                        id = parts[1]
+                        username = parts[3]
+
+                        if not os.path.exists(f"{Group_id_dir}{id}_group_id.txt"):
+                            pass
+                            with open(f"{Group_id_dir}{id}_group_id.txt", 'w') as f:
+                                print(f"File '{f"{Group_id_dir}{id}_group_id.txt"}' created.")
+                        else:
+                            print("this id is already exists!")
+                            return 0
+
+                        sign = sign_server(server_private_key_pem,id)
+                        message = f"group_chat_acctepted,{id},{sign},{username}"
+                        print(f" step 1 is done {id}\n {username}")                        
+                        client_socket.send(message.encode())
+
+
+
             elif message.startswith("SEND"):
                 parts = message.split(',', 2)
                 if len(parts) == 3:

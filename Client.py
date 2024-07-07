@@ -196,6 +196,7 @@ def receive(client_socket):
 
 def add_clientes(sign, id):
     while True:
+        
         user = input("Enter the username (enter done for finish):   ")
         if user == 'done':
             break
@@ -217,6 +218,7 @@ def add_clientes(sign, id):
         sender_socket.close()
 
 def load_listen_port_client(targert_username):
+        listen_port=0
         with open('port.txt', "r") as f:
             for line in f:
                 if line.strip():  # Skip empty lines
@@ -379,6 +381,27 @@ def add_is_accepted(id , username):
     sender_thread2 = threading.Thread(target=send_message_on_group,args=(id,))
     sender_thread2.start()
 
+def request_remove_member_from_group():
+    global current_username
+    group_id = simpledialog.askstring("Remove Member", "Enter the Group ID:")
+    member_to_remove = simpledialog.askstring("Remove Member", "Enter the username of the member to remove:")
+    if group_id and member_to_remove:
+        remove_member_from_group(group_id,member_to_remove)
+        client_socket.send(f"REMOVE_MEMBER,{group_id},{member_to_remove},{current_username}".encode())
+        print(f"Sent request to remove member {member_to_remove} from group {group_id}")
+
+def remove_member_from_group(group_id, username_to_remove):
+    group_file_path = f"{Group_id_dir}{group_id}_group_id.txt"
+    if os.path.exists(group_file_path):
+        with open(group_file_path, 'r') as f:
+            lines = f.readlines()
+        with open(group_file_path, 'w') as f:
+            for line in lines:
+                if username_to_remove not in line:
+                    f.write(line)
+        print(group_id, f"Member {username_to_remove} has been removed from the group.")
+    else:
+        print(f"Group file {group_file_path} does not exist.")
 
 # تابعی برای مدیریت پیام‌های ورودی
 def handle_incoming_messages(client_socket):
@@ -523,6 +546,9 @@ close_button.grid(row=2, column=0, columnspan=2, pady=10)
 request_chat_button = tk.Button(root, text="Request Chat", command=request_chat)
 request_chat_button.grid(row=3, column=0, columnspan=2, pady=10)
 
+# Add Remove Member button
+remove_member_button = tk.Button(root, text="Remove Member", command=request_remove_member_from_group)
+remove_member_button.grid(row=5, column=0, columnspan=2, pady=10)
 
 #Group Chat
 request_chat_button = tk.Button(root, text="Request Group Chat", command=request_group_chat)

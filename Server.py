@@ -326,7 +326,7 @@ def handle_client(client_socket, address):
                         if not os.path.exists(f"{Group_id_dir}{id}_group_id.txt"):
                             pass
                             with open(f"{Group_id_dir}{id}_group_id.txt", 'w') as f:
-                                print(f"File '{f"{Group_id_dir}{id}_group_id.txt"}' created.")
+                                print(f"{Group_id_dir}{id}_group_id.txt created.")
                         else:
                             print("this id is already exists!")
                             return 0

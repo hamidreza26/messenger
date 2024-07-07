@@ -426,6 +426,50 @@ def remove_member_from_group(group_id, username_to_remove):
     else:
         print("You do not have admin privileges to remove a member from the group.")
 
+def request_promote_to_admin():
+    global current_username
+    group_id = simpledialog.askstring("promote Member", "Enter the Group ID:")
+    member_to_promote = simpledialog.askstring("promote Member", "Enter the username of the member to remove:")
+    if group_id and  member_to_promote:
+        promote_member_to_admin(group_id, member_to_promote)
+        client_socket.send(f"promote_MEMBER,{group_id},{ member_to_promote},{current_username}".encode())
+        print(f"Sent request to promote member { member_to_promote} from group {group_id}")
+
+def promote_member_to_admin(group_id, username_to_promote):
+    role = ''
+    group_file_path = f"{Group_id_dir}{group_id}_group_id.txt"
+    
+    if os.path.exists(group_file_path):
+        with open(group_file_path, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                if line.startswith(current_username):
+                    if line.strip():  # Skip empty lines
+                        parts = line.strip().split(':')
+                        if len(parts) == 3:
+                            username, port, role = parts
+    
+    print(role)
+    if role == "admin":
+        if os.path.exists(group_file_path):
+            with open(group_file_path, 'r') as f:
+                lines = f.readlines()
+            with open(group_file_path, 'w') as f:
+                for line in lines:
+                    if line.startswith(username_to_promote):
+                        parts = line.strip().split(':')
+                        if len(parts) == 3:
+                            username, port, role = parts
+                            role = "admin"
+                            f.write(f"{username}:{port}:{role}\n")
+                    else:
+                        f.write(line)
+            print(f"Member {username_to_promote} has been promoted to admin in group {group_id}.")
+        else:
+            print(f"Group file {group_file_path} does not exist.")
+    else:
+        print("You do not have admin privileges to promote a member to admin.")
+
 # تابعی برای مدیریت پیام‌های ورودی
 def handle_incoming_messages(client_socket):
     
@@ -573,6 +617,8 @@ request_chat_button.grid(row=3, column=0, columnspan=2, pady=10)
 remove_member_button = tk.Button(root, text="Remove Member", command=request_remove_member_from_group)
 remove_member_button.grid(row=5, column=0, columnspan=2, pady=10)
 
+promote_button = tk.Button(root, text="Promote to Admin", command=request_promote_to_admin)
+promote_button.grid(row=7, column=0, pady=10)
 #Group Chat
 request_chat_button = tk.Button(root, text="Request Group Chat", command=request_group_chat)
 request_chat_button.grid(row=1, column=0, columnspan=2, pady=15)

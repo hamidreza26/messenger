@@ -83,8 +83,8 @@ def send_message_on_group(id):
             for line in f:
                 if line.strip():  # Skip empty lines
                     parts = line.strip().split(':')
-                    if len(parts) == 2:
-                        username, port = parts
+                    if len(parts) == 3:
+                        username, port,role = parts
                         port = int(port)  # Convert port to integer
                         print(f"Sending message to {username} on port {port}")
                         sender_socket3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -164,6 +164,7 @@ def receive(client_socket):
             
             elif message.startswith(b"group_chat_acctepted"):
                 parts = message.split(b',', 3)
+                role="admin"
                 if len(parts) == 4:
                     id = parts[1]
                     sign = parts[2]
@@ -175,7 +176,7 @@ def receive(client_socket):
                         if isinstance(id, bytes):
                             id = id.decode('utf-8')
                         with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
-                            f.write(f"{current_username}: {Group_port}")
+                            f.write(f"{current_username}: {Group_port}:{role}")
                         add_clientes(sign, id)
                         
                         message = input("enter the message: ")
@@ -374,10 +375,11 @@ def add_is_accepted(id , username):
     print("on the add accteped")
     global Group_port
     print (Group_port)
+    role="member"
     # if isinstance(id, bytes):
     #     id = id.decode('utf-8')
     with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
-            f.write(f"\n{username}: {Group_port}")
+            f.write(f"\n{username}: {Group_port}: {role}")
     sender_thread2 = threading.Thread(target=send_message_on_group,args=(id,))
     sender_thread2.start()
 
@@ -391,17 +393,38 @@ def request_remove_member_from_group():
         print(f"Sent request to remove member {member_to_remove} from group {group_id}")
 
 def remove_member_from_group(group_id, username_to_remove):
-    group_file_path = f"{Group_id_dir}{group_id}_group_id.txt"
-    if os.path.exists(group_file_path):
-        with open(group_file_path, 'r') as f:
+    role = ''
+    try:
+        with open(f"{Group_id_dir}{group_id}_group_id.txt", "r") as f:
             lines = f.readlines()
-        with open(group_file_path, 'w') as f:
             for line in lines:
-                if username_to_remove not in line:
-                    f.write(line)
-        print(group_id, f"Member {username_to_remove} has been removed from the group.")
+                if line.startswith(current_username):
+                    if line.strip():  # Skip empty lines
+                        parts = line.strip().split(':')
+                        if len(parts) == 3:
+                            username, port, role = parts
+                            role = role.strip()
+    except FileNotFoundError:
+        print(f"File {Group_id_dir}{group_id}_group_id.txt not found.")
+        return
+    except ValueError as ve:
+        print(f"Value error: {ve}")
+        return
+    print(role)
+    if role == "admin":
+        group_file_path = f"{Group_id_dir}{group_id}_group_id.txt"
+        if os.path.exists(group_file_path):
+            with open(group_file_path, 'r') as f:
+                lines = f.readlines()
+            with open(group_file_path, 'w') as f:
+                for line in lines:
+                    if username_to_remove not in line:
+                        f.write(line)
+            print(f"Member {username_to_remove} has been removed from the group {group_id}.")
+        else:
+            print(f"Group file {group_file_path} does not exist.")
     else:
-        print(f"Group file {group_file_path} does not exist.")
+        print("You do not have admin privileges to remove a member from the group.")
 
 # تابعی برای مدیریت پیام‌های ورودی
 def handle_incoming_messages(client_socket):

@@ -127,7 +127,7 @@ def send_message(target_ip, target_port, messagefirst, target_public_key ):
 
 
 def receive(client_socket):
-    global Private_Chat
+    global Private_Chat, Group_port
     while True:
         try:
             message = client_socket.recv(1024)

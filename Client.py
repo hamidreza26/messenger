@@ -23,16 +23,17 @@ current_username = None
 
 client_socket.connect((HOST, PORT))
 
-
 def verify_sign(public_key_pem, encrypted_message, original_message):
-    public_key = serialization.load_pem_public_key(
-        public_key_pem, 
-        backend=default_backend()
-    )
-    # Controleer of het originele bericht al in bytes-formaat is
-    if isinstance(original_message, str):
-        original_message = original_message.encode()
     try:
+        if isinstance(public_key_pem, str):
+            public_key_pem = public_key_pem.encode()
+        public_key = serialization.load_pem_public_key(
+            public_key_pem,
+            backend=default_backend()
+        )
+        if isinstance(original_message, str):
+            original_message = original_message.encode()
+        
         public_key.verify(
             base64.b64decode(encrypted_message),
             original_message,
@@ -43,30 +44,32 @@ def verify_sign(public_key_pem, encrypted_message, original_message):
             hashes.SHA256()
         )
         return True
-    except:
+    except Exception as e:
+        print(f"Error in verify_sign: {e}")
         return False
 
-
 def sign_message(private_key_pem, message):
-    private_key = serialization.load_pem_private_key(
-        private_key_pem, 
-        password=None, 
-        backend=default_backend()
-    )
-    # Controleer of het bericht al in bytes-formaat is
-    if isinstance(message, str):
-        message = message.encode()
-    
-    encrypted = private_key.sign(
-        message,
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        hashes.SHA256()
-    )
-    return base64.b64encode(encrypted).decode()
-
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode(),
+            password=None,
+            backend=default_backend()
+        )
+        if isinstance(message, str):
+            message = message.encode()
+        
+        encrypted = private_key.sign(
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return base64.b64encode(encrypted).decode()
+    except Exception as e:
+        print(f"Error in sign_message: {e}")
+        raise
 
 def send_message_on_group(id):
     global Group_id_dir , current_username
@@ -183,6 +186,8 @@ def receive(client_socket):
                         # sender_group_thread = threading.Thread(target=send_group_message, args=(id, message))
                         # sender_group_thread.start()
                         print ( "2 is done")
+                        sender_thread2 = threading.Thread(target=send_message_on_group,args=(id,))
+                        sender_thread2.start()
 
 
 

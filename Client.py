@@ -10,7 +10,7 @@ import random
 import os
 
 HOST = 'localhost'
-PORT = 5009
+PORT = 5003
 
 private_keys_dir = "private_keys/"
 Publickey_keys_dir = "public_keys/"
@@ -83,8 +83,8 @@ def send_message_on_group(id):
             for line in f:
                 if line.strip():  # Skip empty lines
                     parts = line.strip().split(':')
-                    if len(parts) == 2:
-                        username, port = parts
+                    if len(parts) == 3:
+                        username, port,role = parts
                         port = int(port)  # Convert port to integer
                         print(f"Sending message to {username} on port {port}")
                         sender_socket3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -127,7 +127,7 @@ def send_message(target_ip, target_port, messagefirst, target_public_key ):
 
 
 def receive(client_socket):
-    global Private_Chat, Group_port
+    global Private_Chat
     while True:
         try:
             message = client_socket.recv(1024)
@@ -164,6 +164,7 @@ def receive(client_socket):
             
             elif message.startswith(b"group_chat_acctepted"):
                 parts = message.split(b',', 3)
+                role="admin"
                 if len(parts) == 4:
                     id = parts[1]
                     sign = parts[2]
@@ -175,7 +176,7 @@ def receive(client_socket):
                         if isinstance(id, bytes):
                             id = id.decode('utf-8')
                         with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
-                            f.write(f"{current_username}: {Group_port}")
+                            f.write(f"{current_username}: {Group_port}:{role}")
                         add_clientes(sign, id)
                         
                         message = input("enter the message: ")
@@ -196,6 +197,7 @@ def receive(client_socket):
 
 def add_clientes(sign, id):
     while True:
+        
         user = input("Enter the username (enter done for finish):   ")
         if user == 'done':
             break
@@ -217,6 +219,7 @@ def add_clientes(sign, id):
         sender_socket.close()
 
 def load_listen_port_client(targert_username):
+        listen_port=0
         with open('port.txt', "r") as f:
             for line in f:
                 if line.strip():  # Skip empty lines
@@ -372,13 +375,56 @@ def add_is_accepted(id , username):
     print("on the add accteped")
     global Group_port
     print (Group_port)
+    role="member"
     # if isinstance(id, bytes):
     #     id = id.decode('utf-8')
     with open(f"{Group_id_dir}{id}_group_id.txt", 'a') as f:
-            f.write(f"\n{username}: {Group_port}")
+            f.write(f"\n{username}: {Group_port}: {role}")
     sender_thread2 = threading.Thread(target=send_message_on_group,args=(id,))
     sender_thread2.start()
 
+def request_remove_member_from_group():
+    global current_username
+    group_id = simpledialog.askstring("Remove Member", "Enter the Group ID:")
+    member_to_remove = simpledialog.askstring("Remove Member", "Enter the username of the member to remove:")
+    if group_id and member_to_remove:
+        remove_member_from_group(group_id,member_to_remove)
+        client_socket.send(f"REMOVE_MEMBER,{group_id},{member_to_remove},{current_username}".encode())
+        print(f"Sent request to remove member {member_to_remove} from group {group_id}")
+
+def remove_member_from_group(group_id, username_to_remove):
+    role = ''
+    try:
+        with open(f"{Group_id_dir}{group_id}_group_id.txt", "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                if line.startswith(current_username):
+                    if line.strip():  # Skip empty lines
+                        parts = line.strip().split(':')
+                        if len(parts) == 3:
+                            username, port, role = parts
+                            role = role.strip()
+    except FileNotFoundError:
+        print(f"File {Group_id_dir}{group_id}_group_id.txt not found.")
+        return
+    except ValueError as ve:
+        print(f"Value error: {ve}")
+        return
+    print(role)
+    if role == "admin":
+        group_file_path = f"{Group_id_dir}{group_id}_group_id.txt"
+        if os.path.exists(group_file_path):
+            with open(group_file_path, 'r') as f:
+                lines = f.readlines()
+            with open(group_file_path, 'w') as f:
+                for line in lines:
+                    if username_to_remove not in line:
+                        f.write(line)
+            print(f"Member {username_to_remove} has been removed from the group {group_id}.")
+        else:
+            print(f"Group file {group_file_path} does not exist.")
+    else:
+        print("You do not have admin privileges to remove a member from the group.")
 
 # تابعی برای مدیریت پیام‌های ورودی
 def handle_incoming_messages(client_socket):
@@ -387,7 +433,7 @@ def handle_incoming_messages(client_socket):
     message = client_socket.recv(1024).decode()
     print(message)
     private_key = load_keys(current_username)
- 
+    # message2 = decryptMessage(message, private_key)
     if message.startswith("add_my_group"):
             print("its add")
             parts = message.split(',')
@@ -423,12 +469,13 @@ def handle_incoming_messages(client_socket):
                 print(f"{username}: {message}")
             else:
                 print("cant verify the message unfortunatly")
-                
-    elif  decryptMessage(message, private_key).startswith("FIRST_MESSAGE") and Private_Chat == 0:
+
+    elif  message.startswith("FIRST_MESSAGE") and Private_Chat == 0:
         parts = message.split(',')
         if len(parts) == 3:
             sender_username = parts[1]
             firstmessage = parts[2]
+            DE_message = decryptMessage(firstmessage, private_key)
             print(DE_message)
             print(sender_username)
             print(f"Step 1: try for give the pub key from {sender_username}")
@@ -523,6 +570,9 @@ close_button.grid(row=2, column=0, columnspan=2, pady=10)
 request_chat_button = tk.Button(root, text="Request Chat", command=request_chat)
 request_chat_button.grid(row=3, column=0, columnspan=2, pady=10)
 
+# Add Remove Member button
+remove_member_button = tk.Button(root, text="Remove Member", command=request_remove_member_from_group)
+remove_member_button.grid(row=5, column=0, columnspan=2, pady=10)
 
 #Group Chat
 request_chat_button = tk.Button(root, text="Request Group Chat", command=request_group_chat)

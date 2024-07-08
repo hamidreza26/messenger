@@ -20,6 +20,7 @@ users_db = "users.txt"
 Publickey_keys_dir = "public_keys/"
 private_keys_dir = "private_keys/"
 Group_id_dir = "Group_id_dir/"
+roles_db = "roles.txt"
 if not os.path.exists(Publickey_keys_dir):
     os.makedirs(Publickey_keys_dir)
 
@@ -92,6 +93,21 @@ def save_user(username, password_hash, salt):
     with open(users_db, "a") as f:
         f.write(f"{username},{password_hash},{salt}\n")
 
+def load_roles():
+    roles = {}
+    try:
+        with open(roles_db, "r") as f:
+            for line in f:
+                if line.strip():
+                    username, role = line.strip().split(',')
+                    roles[username] = role
+    except FileNotFoundError:
+        pass
+    return roles
+
+def save_role(username, role):
+    with open(roles_db, "a") as f:
+        f.write(f"{username},{role}\n")
 
 
 
@@ -263,6 +279,10 @@ def handle_client(client_socket, address):
                     private_key_pem, public_key_pem = generate_keys()
                     save_private_key(username, private_key_pem)
                     save_public_key(username, public_key_pem)
+                    role = "user"
+                    if username == "super_admin":
+                        role = "admin"
+                    save_role(username, role)
                     client_socket.send("Registration successful.".encode())
                     
             elif data.startswith("LOGIN"):
@@ -322,19 +342,21 @@ def handle_client(client_socket, address):
                     if len(parts) == 4:
                         id = parts[1]
                         username = parts[3]
+                        roles = load_roles()
+                        if roles.get(user) == 'admin':
+                            if not os.path.exists(f"{Group_id_dir}{id}_group_id.txt"):
+                                pass
+                                with open(f"{Group_id_dir}{id}_group_id.txt", 'w') as f:
+                                    print(f"{Group_id_dir}{id}_group_id.txt created.")
+                            else:
+                                print("this id is already exists!")
+                                return 0
 
-                        if not os.path.exists(f"{Group_id_dir}{id}_group_id.txt"):
-                            pass
-                            with open(f"{Group_id_dir}{id}_group_id.txt", 'w') as f:
-                                print(f"{Group_id_dir}{id}_group_id.txt created.")
-                        else:
-                            print("this id is already exists!")
-                            return 0
-
-                        sign = sign_server(server_private_key_pem,id)
-                        message = f"group_chat_acctepted,{id},{sign},{username}"
-                        print(f" step 1 is done {id}\n {username}")                        
-                        client_socket.send(message.encode())
+                            sign = sign_server(server_private_key_pem,id)
+                            message = f"group_chat_acctepted,{id},{sign},{username}"
+                            print(f" step 1 is done {id}\n {username}")                        
+                            client_socket.send(message.encode())
+                        else:client_socket.send("no access".encode())
 
 
 
